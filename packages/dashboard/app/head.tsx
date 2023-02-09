@@ -6,5 +6,5 @@ export default function Head() {
       <meta name="description" content="Analytics Powered By Redis" />
       {/* <link rel="icon" href="/favicon.ico" /> */}
     </>
-  )
+  );
 }

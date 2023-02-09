@@ -4,6 +4,6 @@ const nextConfig = {
     appDir: true,
     serverComponentsExternalPackages: ["@tremor/react"],
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

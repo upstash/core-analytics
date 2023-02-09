@@ -30,17 +30,33 @@ export type AnalyticsConfig = {
    */
   window: Window | number;
   prefix?: string;
+
+  /**
+   * Configure the retention period for analytics. All events older than the retention period will
+   * be deleted. This reduces the number of keys that need to be scanned when aggregating.
+   *
+   * Can either be a string in the format of `1s`, `2m`, `3h`, `4d` or a number of milliseconds.
+   * 0, negative or undefined means that the retention is disabled.
+   *
+   * @default Disabled
+   *
+   * Buckets are evicted when they are read, not when they are written. This is much cheaper since
+   * it only requires a single command to ingest data.
+   */
+  retention?: Window | number;
 };
 
 export class Analytics {
   private readonly redis: Redis;
   private readonly prefix: string;
   private readonly bucketSize: number;
+  private readonly retention: number;
 
   constructor(config: AnalyticsConfig) {
     this.redis = config.redis;
     this.prefix = config.prefix ?? "@upstash/analytics";
     this.bucketSize = this.parseWindow(config.window);
+    this.retention = this.parseWindow(config.retention ?? 0);
   }
 
   /**
@@ -162,9 +178,10 @@ export class Analytics {
       cutoff?: number;
     },
   ): Promise<{ time: number; [key: keyof Omit<Event, "time">]: number }[]> {
+    const now = Date.now();
     const keys: string[] = [];
     let cursor = 0;
-    const match = [this.prefix, table, "*"].join(":")
+    const match = [this.prefix, table, "*"].join(":");
     do {
       const [nextCursor, found] = await this.redis.scan(cursor, {
         match,
@@ -173,12 +190,18 @@ export class Analytics {
       cursor = nextCursor;
       for (const key of found) {
         const timestamp = parseInt(key.split(":").pop()!);
+        // Delete keys that are older than the retention period
+        if (this.retention > 0 && timestamp < now - this.retention) {
+          await this.redis.del(key);
+          continue;
+        }
         // Take all the keys that at least overlap with the given timestamp
         if (timestamp >= (opts?.cutoff ?? 0)) {
           keys.push(key);
         }
       }
     } while (cursor !== 0);
+
     const days = await Promise.all(
       keys.sort().map(async (key) => {
         const fields = await this.redis.hgetall<Record<string, number>>(key);
@@ -211,8 +234,8 @@ export class Analytics {
           for (const [k, v] of Object.entries(r) as [string, string][]) {
             // @ts-ignore
             if (opts?.filter && !opts.filter.includes(k)) {
-                continue;
-              }
+              continue;
+            }
             if (!day[k]) {
               day[k] = {};
             }

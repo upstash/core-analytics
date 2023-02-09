@@ -1,15 +1,13 @@
 <div align="center">
-    <h1 align="center">@upstash/analytics</h1>
+    <h1 align="center">@upstash/core-analytics</h1>
     <h5>Serverless Analytics for Redis</h5>
 </div>
 
-<div align="center">
-  <a href="https://analytics.upstash.io/">analytics.upstash.io</a>
-</div>
 <br/>
 
-Record and analyze custom events. Built on top of Upstash Redis
 
+This library offers some low level building blocks to record and analyze custom events in Redis.
+It's main purpose is to provide a simple way to record and query events in Redis without having to worry about the underlying data structure so we can build more advanced analytics features on top of it.
 
 ## Features
 
@@ -72,7 +70,7 @@ const result = await analytics.query("pageviews");
 
 ## Development
 
-This monorepo is managed by turborepo and uses `pnpm` for dependency management.
+This project uses `pnpm` for dependency management.
 
 #### Install dependencies
 
@@ -104,10 +102,3 @@ The field of each hash is a serialized JSON object with the user's event data an
   '{"page": "/auth/login","country": "US"}': 2
 }
 ```
-
-## Authors
-
-This project was originally created by
-
-- [@chronark_](https://twitter.com/chronark_)
-- [@enesakar](https://twitter.com/enesakar)

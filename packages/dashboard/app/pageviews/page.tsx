@@ -1,5 +1,3 @@
-
-
 import { Redis } from "@upstash/redis";
 import { Card, Metric, Text, Title, BarList, Flex, Col, Block, ColGrid } from "@tremor/react";
 import { Chart } from "./main-chart";
@@ -9,31 +7,32 @@ import { Analytics } from "@upstash/analytics";
 const analytics = new Analytics({
   redis: Redis.fromEnv(),
   window: "15m",
-})
+});
 
-export const relative = 15
+export const relative = 15;
 export default async function Page() {
-
-  const res = await analytics.query("pageviews")
-  const viewsOverTime = res.map(v => ({ time: v.time, value: Object.values(v.pathname ?? {}).reduce((sum, c) => sum + c, 0) }))
-
+  const res = await analytics.query("pageviews");
+  const viewsOverTime = res.map((v) => ({
+    time: v.time,
+    value: Object.values(v.pathname ?? {}).reduce((sum, c) => sum + c, 0),
+  }));
 
   const viewsByCountry = res.reduce((countries, b) => {
     Object.entries(b.country ?? {}).forEach(([country, count]) => {
-      countries[country] = countries[country] ?? 0
-      countries[country] += count
-    })
-    return countries
-  }, {} as Record<string, number>)
+      countries[country] = countries[country] ?? 0;
+      countries[country] += count;
+    });
+    return countries;
+  }, {} as Record<string, number>);
 
   const viewsByPath = res.reduce((paths, b) => {
     Object.entries(b.pathname ?? {}).forEach(([pathname, count]) => {
-      paths[pathname] = paths[pathname] ?? 0
-      paths[pathname] += count
-    })
-    return paths
-  }, {} as Record<string, number>)
-  console.log(JSON.stringify({ viewsByCountry }, null, 2))
+      paths[pathname] = paths[pathname] ?? 0;
+      paths[pathname] += count;
+    });
+    return paths;
+  }, {} as Record<string, number>);
+  console.log(JSON.stringify({ viewsByCountry }, null, 2));
 
   const format = (number: number) => Intl.NumberFormat("us", { notation: "compact" }).format(number).toString();
 
@@ -42,7 +41,9 @@ export default async function Page() {
       <header className="font-display bg-gradient-to-tr from-neutral-100 via-white to-neutral-200">
         <div className="relative px-6 lg:px-8">
           <div className="max-w-3xl py-4 mx-auto md:py-8 ">
-            <h1 className="text-4xl font-bold text-neutral-900 sm:text-center sm:text-4xl hover:underline">@upstash/analytics/pageviews</h1>
+            <h1 className="text-4xl font-bold text-neutral-900 sm:text-center sm:text-4xl hover:underline">
+              @upstash/analytics/pageviews
+            </h1>
           </div>
         </div>
       </header>
@@ -57,7 +58,7 @@ export default async function Page() {
                   <Text>Total views</Text>
                 </Flex>
                 {JSON.stringify(viewsOverTime, null, 2)}
-                 {/* <Chart data={viewsOverTime} />    */}
+                {/* <Chart data={viewsOverTime} />    */}
               </Card>
             </Col>
 
@@ -67,8 +68,11 @@ export default async function Page() {
                   <Title>Top Pages</Title>
 
                   <BarList
-                    data={Object.entries(viewsByPath).map(([country, count]) => ({ key: country, name: country, value: count }))}
-
+                    data={Object.entries(viewsByPath).map(([country, count]) => ({
+                      key: country,
+                      name: country,
+                      value: count,
+                    }))}
                     valueFormatter={format}
                     marginTop="mt-2"
                   />
@@ -81,7 +85,11 @@ export default async function Page() {
                   <Title>Top Countries</Title>
 
                   <BarList
-                    data={Object.entries(viewsByCountry).map(([country, count]) => ({ key: country, name: country, value: count }))}
+                    data={Object.entries(viewsByCountry).map(([country, count]) => ({
+                      key: country,
+                      name: country,
+                      value: count,
+                    }))}
                     valueFormatter={format}
                     marginTop="mt-2"
                   />
@@ -94,6 +102,3 @@ export default async function Page() {
     </div>
   );
 }
-
-
-
