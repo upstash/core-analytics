@@ -50,13 +50,22 @@ export class Analytics {
   private readonly redis: Redis;
   private readonly prefix: string;
   private readonly bucketSize: number;
-  private readonly retention: number;
+  private readonly retention?: number;
 
   constructor(config: AnalyticsConfig) {
     this.redis = config.redis;
     this.prefix = config.prefix ?? "@upstash/analytics";
     this.bucketSize = this.parseWindow(config.window);
-    this.retention = this.parseWindow(config.retention ?? 0);
+    this.retention = config.retention ? this.parseWindow(config.retention) : undefined;
+  }
+
+  private validateTableName(table: string) {
+    const regex = /^[a-zA-Z0-9_-]+$/;
+    if (!regex.test(table)) {
+      throw new Error(
+        `Invalid table name: ${table}. Table names can only contain letters, numbers, dashes and underscores.`,
+      );
+    }
   }
 
   /**
@@ -95,6 +104,7 @@ export class Analytics {
    * @param event
    */
   public async ingest(table: string, ...events: Event[]): Promise<void> {
+    this.validateTableName(table);
     await Promise.all(
       events.map(async (event) => {
         const time = event.time ?? Date.now();
@@ -121,6 +131,7 @@ export class Analytics {
       cutoff?: number;
     },
   ): Promise<{ time: number; [key: keyof Omit<Event, "time">]: number }[]> {
+    this.validateTableName(table);
     const keys: string[] = [];
     let cursor = 0;
     do {
@@ -175,10 +186,19 @@ export class Analytics {
     opts?: {
       where?: Record<TWhere, unknown>;
       filter?: TFilter[];
-      cutoff?: number;
+      /**
+       * The range of timestamps to query. If not specified, all buckets are loaded.
+       * The range is inclusive.
+       * The first element is the start of the range, the second element is the end of the range.
+       *
+       * In milliseconds
+       */
+      range?: [number] | [number, number];
     },
   ): Promise<{ time: number; [key: keyof Omit<Event, "time">]: number }[]> {
+    this.validateTableName(table);
     const now = Date.now();
+
     const keys: string[] = [];
     let cursor = 0;
     const match = [this.prefix, table, "*"].join(":");
@@ -191,14 +211,15 @@ export class Analytics {
       for (const key of found) {
         const timestamp = parseInt(key.split(":").pop()!);
         // Delete keys that are older than the retention period
-        if (this.retention > 0 && timestamp < now - this.retention) {
+        if (this.retention && timestamp < now - this.retention) {
           await this.redis.del(key);
           continue;
         }
-        // Take all the keys that at least overlap with the given timestamp
-        if (timestamp >= (opts?.cutoff ?? 0)) {
-          keys.push(key);
+        // Take all the keys that at least overlap with the given range
+        if (opts?.range && (timestamp < opts.range[0] || (opts.range[1] && timestamp > opts.range[1]))) {
+          continue;
         }
+        keys.push(key);
       }
     } while (cursor !== 0);
 
