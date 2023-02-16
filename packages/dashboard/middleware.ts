@@ -22,14 +22,11 @@ export const config = {
 export default function middleware(req: NextRequest, event: NextFetchEvent): NextResponse {
   const url = new URL(req.url);
 
-  console.log(req.geo);
   event.waitUntil(
-    analytics
-      .ingest("pageviews", {
-        pathname: url.pathname,
-        ...req.geo,
-      })
-      .then(() => console.log("ingested")),
+    analytics.ingest("pageviews", {
+      pathname: url.pathname,
+      ...req.geo,
+    }),
   );
 
   return NextResponse.next();

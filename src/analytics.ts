@@ -282,7 +282,6 @@ export class Analytics {
         for (const [field, count] of Object.entries(fields)) {
           const r = JSON.parse(field);
           for (const [k, v] of Object.entries(r) as [TAggregateBy, string][]) {
-            console.log({ k, v });
             if (k !== aggregateBy) {
               continue;
             }
