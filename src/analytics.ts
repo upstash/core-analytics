@@ -86,7 +86,7 @@ export class Analytics {
   private readonly bucketSize: number;
   private readonly retention?: number;
 
-  private readonly cache = new Cache<Record<string, number>>(5000);
+  private readonly cache = new Cache<Record<string, number>>(60000);
 
   constructor(config: AnalyticsConfig) {
     this.redis = config.redis;
@@ -160,15 +160,10 @@ export class Analytics {
     );
   }
 
-  /**
-   * Returns the number of events per bucket
-   */
-  async count(
+  private async loadBuckets(
     table: string,
-    opts?: {
-      range?: [number] | [number, number];
-    },
-  ): Promise<{ time: number; count: number }[]> {
+    range?: [number] | [number, number],
+  ): Promise<{ key: string; hash: Record<string, number> }[]> {
     this.validateTableName(table);
     const now = Date.now();
 
@@ -189,23 +184,65 @@ export class Analytics {
           continue;
         }
         // Take all the keys that at least overlap with the given range
-        if (opts?.range && (timestamp < opts.range[0] || (opts.range[1] && timestamp > opts.range[1]))) {
+        if (range && (timestamp < range[0] || (range[1] && timestamp > range[1]))) {
           continue;
         }
         keys.push(key);
       }
     } while (cursor !== 0);
 
-    return await Promise.all(
-      keys.map(async (key) => {
-        const timestamp = parseInt(key.split(":").pop()!);
-        const hash = await this.redis.hgetall<Record<string, number>>(key);
-        if (!hash) {
+    const loadKeys: string[] = [];
+    const cachedBuckets: { key: string; hash: Record<string, number> }[] = [];
+    for (const key of keys) {
+      const cached = this.cache.get(key);
+      if (cached) {
+        cachedBuckets.push({
+          key,
+          hash: cached,
+        });
+      } else {
+        loadKeys.push(key);
+      }
+    }
+
+    const loadedBuckets = await Promise.all(
+      loadKeys.map(async (key) => {
+        const cached = this.cache.get(key);
+        if (cached) {
           return {
-            time: timestamp,
-            count: 0,
+            key,
+            hash: cached,
           };
         }
+        const hash = await this.redis.hgetall<Record<string, number>>(key);
+        if (hash) {
+          this.cache.set(key, hash);
+        }
+        return {
+          key,
+          hash: hash ?? {},
+        };
+      }),
+    );
+
+    return [...cachedBuckets, ...loadedBuckets].sort((a, b) => a.hash.time - b.hash.time);
+  }
+  /**
+   * Returns the number of events per bucket
+   */
+  async count(
+    table: string,
+    opts?: {
+      range?: [number] | [number, number];
+    },
+  ): Promise<{ time: number; count: number }[]> {
+    this.validateTableName(table);
+
+    const buckets = await this.loadBuckets(table, opts?.range);
+
+    return await Promise.all(
+      buckets.map(async ({ key, hash }) => {
+        const timestamp = parseInt(key.split(":").pop()!);
         return {
           time: timestamp,
           count: Object.values(hash).reduce((acc, curr) => acc + curr, 0),
@@ -236,50 +273,14 @@ export class Analytics {
     },
   ): Promise<({ time: number } & Record<string, number>)[]> {
     this.validateTableName(table);
-    const now = Date.now();
 
-    const keys: string[] = [];
-    let cursor = 0;
-    const match = [this.prefix, table, "*"].join(":");
-    do {
-      const [nextCursor, found] = await this.redis.scan(cursor, {
-        match,
-      });
-
-      cursor = nextCursor;
-      for (const key of found) {
-        const timestamp = parseInt(key.split(":").pop()!);
-        // Delete keys that are older than the retention period
-        if (this.retention && timestamp < now - this.retention) {
-          await this.redis.del(key);
-          continue;
-        }
-        // Take all the keys that at least overlap with the given range
-        if (opts?.range && (timestamp < opts.range[0] || (opts.range[1] && timestamp > opts.range[1]))) {
-          continue;
-        }
-        keys.push(key);
-      }
-    } while (cursor !== 0);
+    const buckets = await this.loadBuckets(table, opts?.range);
 
     const days = await Promise.all(
-      keys.sort().map(async (key) => {
-        let fields = this.cache.get(key);
-        if (!fields) {
-          fields = await this.redis.hgetall<Record<string, number>>(key);
-          if (fields) {
-            this.cache.set(key, fields);
-          }
-        }
-        if (!fields) {
-          return {};
-        }
+      buckets.map(async ({ key, hash }) => {
         const day = { time: Key.fromString(key).bucket } as { time: number } & Record<string, number>;
-        if (!fields) {
-          return day;
-        }
 
-        for (const [field, count] of Object.entries(fields)) {
+        for (const [field, count] of Object.entries(hash)) {
           const r = JSON.parse(field);
           for (const [k, v] of Object.entries(r) as [TAggregateBy, string][]) {
             if (k !== aggregateBy) {
@@ -289,7 +290,7 @@ export class Analytics {
               day[v] = 0;
             }
 
-            day[v] += count;
+            day[v] += count as number;
           }
         }
         return day;
@@ -314,49 +315,15 @@ export class Analytics {
     },
   ): Promise<{ time: number; [key: keyof Omit<Event, "time">]: number }[]> {
     this.validateTableName(table);
-    const now = Date.now();
-
-    const keys: string[] = [];
-    let cursor = 0;
-    const match = [this.prefix, table, "*"].join(":");
-    do {
-      const [nextCursor, found] = await this.redis.scan(cursor, {
-        match,
-      });
-
-      cursor = nextCursor;
-      for (const key of found) {
-        const timestamp = parseInt(key.split(":").pop()!);
-        // Delete keys that are older than the retention period
-        if (this.retention && timestamp < now - this.retention) {
-          await this.redis.del(key);
-          continue;
-        }
-        // Take all the keys that at least overlap with the given range
-        if (opts?.range && (timestamp < opts.range[0] || (opts.range[1] && timestamp > opts.range[1]))) {
-          continue;
-        }
-        keys.push(key);
-      }
-    } while (cursor !== 0);
+    const buckets = await this.loadBuckets(table, opts?.range);
 
     const days = await Promise.all(
-      keys.sort().map(async (key) => {
-        let fields = this.cache.get(key);
-        if (!fields) {
-          fields = await this.redis.hgetall<Record<string, number>>(key);
-          if (fields) {
-            this.cache.set(key, fields);
-          }
-        }
-        if (!fields) {
-          return {};
-        }
+      buckets.map(async ({ key, hash }) => {
         const day = { time: Key.fromString(key).bucket } as { time: number } & {
           [key: keyof Omit<Event, "time">]: Record<string, number>;
         };
 
-        for (const [field, count] of Object.entries(fields)) {
+        for (const [field, count] of Object.entries(hash)) {
           const r = JSON.parse(field);
 
           let skip = false;
