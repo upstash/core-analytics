@@ -192,11 +192,12 @@ export class Analytics {
     } while (cursor !== 0);
 
     const loadKeys: string[] = [];
-    const cachedBuckets: { key: string; hash: Record<string, number> }[] = [];
+    const buckets: { key: string; hash: Record<string, number> }[] = [];
     for (const key of keys) {
       const cached = this.cache.get(key);
       if (cached) {
-        cachedBuckets.push({
+        console.log("cache hit", key);
+        buckets.push({
           key,
           hash: cached,
         });
@@ -205,27 +206,24 @@ export class Analytics {
       }
     }
 
-    const loadedBuckets = await Promise.all(
-      loadKeys.map(async (key) => {
-        const cached = this.cache.get(key);
-        if (cached) {
-          return {
-            key,
-            hash: cached,
-          };
-        }
-        const hash = await this.redis.hgetall<Record<string, number>>(key);
-        if (hash) {
-          this.cache.set(key, hash);
-        }
-        return {
-          key,
-          hash: hash ?? {},
-        };
-      }),
-    );
+    const p = this.redis.pipeline();
+    for (const key of loadKeys) {
+      p.hgetall(key);
+    }
+    const res = loadKeys.length > 0 ? await p.exec<(Record<string, number> | null)[]>() : [];
+    for (let i = 0; i < loadKeys.length; i++) {
+      const key = loadKeys[i];
+      const hash = res[i];
+      if (hash) {
+        this.cache.set(key, hash);
+      }
+      buckets.push({
+        key,
+        hash: hash ?? {},
+      });
+    }
 
-    return [...cachedBuckets, ...loadedBuckets].sort((a, b) => a.hash.time - b.hash.time);
+    return buckets.sort((a, b) => a.hash.time - b.hash.time);
   }
   /**
    * Returns the number of events per bucket
