@@ -162,35 +162,47 @@ export class Analytics {
 
   private async loadBuckets(
     table: string,
-    range?: [number] | [number, number],
+    opts: {
+      scan?: boolean;
+      range: [number, number];
+    },
   ): Promise<{ key: string; hash: Record<string, number> }[]> {
     this.validateTableName(table);
     const now = Date.now();
 
     const keys: string[] = [];
-    let cursor = 0;
-    const match = [this.prefix, table, "*"].join(":");
-    do {
-      const [nextCursor, found] = await this.redis.scan(cursor, {
-        match,
-      });
+    if (opts.scan) {
+      let cursor = 0;
+      const match = [this.prefix, table, "*"].join(":");
+      do {
+        const [nextCursor, found] = await this.redis.scan(cursor, {
+          match,
+        });
 
-      cursor = nextCursor;
-      for (const key of found) {
-        const timestamp = parseInt(key.split(":").pop()!);
-        // Delete keys that are older than the retention period
-        if (this.retention && timestamp < now - this.retention) {
-          await this.redis.del(key);
-          continue;
+        cursor = nextCursor;
+        for (const key of found) {
+          const timestamp = parseInt(key.split(":").pop()!);
+          // Delete keys that are older than the retention period
+          if (this.retention && timestamp < now - this.retention) {
+            await this.redis.del(key);
+            continue;
+          }
+          // Take all the keys that at least overlap with the given range
+          if (timestamp >= opts.range[0] || timestamp <= opts.range[1]) {
+            keys.push(key);
+          }
         }
-        // Take all the keys that at least overlap with the given range
-        if (range && (timestamp < range[0] || (range[1] && timestamp > range[1]))) {
-          continue;
-        }
-        keys.push(key);
+      } while (cursor !== 0);
+    } else {
+      let t = Math.floor(now / this.bucketSize) * this.bucketSize;
+      while (t > opts.range[1]) {
+        t -= this.bucketSize;
       }
-    } while (cursor !== 0);
-
+      while (t >= opts.range[0]) {
+        keys.push([this.prefix, table, t].join(":"));
+        t -= this.bucketSize;
+      }
+    }
     const loadKeys: string[] = [];
     const buckets: { key: string; hash: Record<string, number> }[] = [];
     for (const key of keys) {
@@ -230,13 +242,13 @@ export class Analytics {
    */
   async count(
     table: string,
-    opts?: {
-      range?: [number] | [number, number];
+    opts: {
+      range: [number, number];
     },
   ): Promise<{ time: number; count: number }[]> {
     this.validateTableName(table);
 
-    const buckets = await this.loadBuckets(table, opts?.range);
+    const buckets = await this.loadBuckets(table, { range: opts.range });
 
     return await Promise.all(
       buckets.map(async ({ key, hash }) => {
@@ -259,7 +271,7 @@ export class Analytics {
   async aggregateBy<TAggregateBy extends keyof Omit<Event, "time">>(
     table: string,
     aggregateBy: TAggregateBy,
-    opts?: {
+    opts: {
       /**
        * The range of timestamps to query. If not specified, all buckets are loaded.
        * The range is inclusive.
@@ -267,12 +279,12 @@ export class Analytics {
        *
        * In milliseconds
        */
-      range?: [number] | [number, number];
+      range: [number, number];
     },
   ): Promise<({ time: number } & Record<string, number>)[]> {
     this.validateTableName(table);
 
-    const buckets = await this.loadBuckets(table, opts?.range);
+    const buckets = await this.loadBuckets(table, { range: opts.range });
 
     const days = await Promise.all(
       buckets.map(async ({ key, hash }) => {
@@ -299,21 +311,21 @@ export class Analytics {
 
   async query<TWhere extends keyof Omit<Event, "time">, TFilter extends keyof Omit<Event, "time">>(
     table: string,
-    opts?: {
+    opts: {
       where?: Record<TWhere, unknown>;
       filter?: TFilter[];
       /**
-       * The range of timestamps to query. If not specified, all buckets are loaded.
+       * The range of timestamps to query.
        * The range is inclusive.
        * The first element is the start of the range, the second element is the end of the range.
        *
        * In milliseconds
        */
-      range?: [number] | [number, number];
+      range: [number, number];
     },
   ): Promise<{ time: number; [key: keyof Omit<Event, "time">]: number }[]> {
     this.validateTableName(table);
-    const buckets = await this.loadBuckets(table, opts?.range);
+    const buckets = await this.loadBuckets(table, { range: opts.range });
 
     const days = await Promise.all(
       buckets.map(async ({ key, hash }) => {
