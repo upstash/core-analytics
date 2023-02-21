@@ -281,32 +281,45 @@ export class Analytics {
        */
       range: [number, number];
     },
-  ): Promise<({ time: number } & Record<string, number>)[]> {
+  ): Promise<({ time: number } & Record<string, Record<string, number>>)[]> {
     this.validateTableName(table);
 
     const buckets = await this.loadBuckets(table, { range: opts.range });
 
     const days = await Promise.all(
       buckets.map(async ({ key, hash }) => {
-        const day = { time: Key.fromString(key).bucket } as { time: number } & Record<string, number>;
+        const day = { time: Key.fromString(key).bucket } as { time: number } & Record<
+          TAggregateBy,
+          Record<string, number>
+        >;
 
         for (const [field, count] of Object.entries(hash)) {
-          const r = JSON.parse(field);
+          const r = JSON.parse(field) as Record<TAggregateBy, unknown>;
           for (const [k, v] of Object.entries(r) as [TAggregateBy, string][]) {
-            if (k !== aggregateBy) {
+            console.log({ day, k, v });
+
+            const agg = r[aggregateBy];
+            // @ts-ignore
+            if (!day[agg]) {
+              // @ts-ignore
+              day[agg] = {};
+            }
+            if (k === aggregateBy) {
               continue;
             }
-            if (!day[v]) {
-              day[v] = 0;
+            // @ts-ignore
+            if (!day[agg][v]) {
+              // @ts-ignore
+              day[agg][v] = 0;
             }
-
-            day[v] += count as number;
+            // @ts-ignore
+            day[agg][v] += count;
           }
         }
         return day;
       }),
     );
-    return days as any;
+    return days;
   }
 
   async query<TWhere extends keyof Omit<Event, "time">, TFilter extends keyof Omit<Event, "time">>(
