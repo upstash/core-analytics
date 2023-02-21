@@ -208,7 +208,6 @@ export class Analytics {
     for (const key of keys) {
       const cached = this.cache.get(key);
       if (cached) {
-        console.log("cache hit", key);
         buckets.push({
           key,
           hash: cached,
@@ -296,7 +295,6 @@ export class Analytics {
         for (const [field, count] of Object.entries(hash)) {
           const r = JSON.parse(field) as Record<TAggregateBy, unknown>;
           for (const [k, v] of Object.entries(r) as [TAggregateBy, string][]) {
-            console.log({ day, k, v });
 
             const agg = r[aggregateBy];
             // @ts-ignore
