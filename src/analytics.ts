@@ -295,7 +295,6 @@ export class Analytics {
         for (const [field, count] of Object.entries(hash)) {
           const r = JSON.parse(field) as Record<TAggregateBy, unknown>;
           for (const [k, v] of Object.entries(r) as [TAggregateBy, string][]) {
-
             const agg = r[aggregateBy];
             // @ts-ignore
             if (!day[agg]) {
