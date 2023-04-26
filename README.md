@@ -9,9 +9,7 @@
 This library offers some low level building blocks to record and analyze custom events in Redis.
 It's main purpose is to provide a simple way to record and query events in Redis without having to worry about the underlying data structure so we can build more advanced analytics features on top of it.
 
-## Features
-
-- **TODO:** stuff
+The quickstart below is slightly outdated. We're working on it.
 
 <br/>
 
@@ -26,7 +24,7 @@ a new global database.
 
 After creating the db, copy the `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to your `.env` file.
 
-3. Install `@upstash/analytics` in your project
+3. Install `@upstash/core-analytics` in your project
 
 ```bash
 npm install @upstash/analytics @upstash/redis
@@ -35,7 +33,7 @@ npm install @upstash/analytics @upstash/redis
 4. Create an analytics client
 
 ```ts
-import { Analytyics } from "@upstash/analytics";
+import { Analytyics } from "@upstash/core-analytics";
 import { Redis } from "@upstash/redis";
 
 const analytics = new Analytics({
