@@ -5,7 +5,6 @@
 
 <br/>
 
-
 This library offers some low level building blocks to record and analyze custom events in Redis.
 It's main purpose is to provide a simple way to record and query events in Redis without having to worry about the underlying data structure so we can build more advanced analytics features on top of it.
 
@@ -13,9 +12,7 @@ The quickstart below is slightly outdated. We're working on it.
 
 <br/>
 
-
 ## Quickstart
-
 
 1. Create a redis database
 
@@ -42,7 +39,6 @@ const analytics = new Analytics({
 });
 ```
 
-
 5. Ingest some events
 
 An event consists of a `time` field and any additional key-value pairs that you can use to record any information you want.
@@ -61,34 +57,33 @@ await analytics.ingest("pageviews", event);
 4. Query your events
 
 ```ts
-
 const result = await analytics.query("pageviews");
-
 ```
 
 ## Development
 
-This project uses `pnpm` for dependency management.
+This project uses `bun` for dependency management.
 
 #### Install dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 #### Build
 
 ```bash
-pnpm build
+bun build
 ```
-
 
 ## Database Schema
 
 All metrics are stored in Redis `Hash` data types and sharded into buckets based on the `window` option.
+
 ```
 @upstash/analytics:{TABLE}:{TIMESTAMP}
 ```
+
 - `TABLE` is a namespace to group events together. ie for managing multiple projects int a single database
 - `TIMESTAMP` is the starting timestamp of each window
 
@@ -96,7 +91,7 @@ The field of each hash is a serialized JSON object with the user's event data an
 
 ```json
 {
-  '{"page": "/auth/login","country": "DE"}': 5,
-  '{"page": "/auth/login","country": "US"}': 2
+  "{\"page\": \"/auth/login\",\"country\": \"DE\"}": 5,
+  "{\"page\": \"/auth/login\",\"country\": \"US\"}": 2
 }
 ```
