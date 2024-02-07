@@ -234,7 +234,12 @@ export class Analytics {
       });
     }
 
-    return buckets.sort((a, b) => a.hash.time - b.hash.time);
+    return buckets
+      .sort((a, b) => a.hash.time - b.hash.time)
+      .map((item) => ({
+        ...item,
+        hash: Object.fromEntries(Object.entries(item.hash).map((x) => [x[0], Number(x[1])])),
+      }));
   }
   /**
    * Returns the number of events per bucket
@@ -287,10 +292,9 @@ export class Analytics {
 
     const days = await Promise.all(
       buckets.map(async ({ key, hash }) => {
-        const day = { time: Key.fromString(key).bucket } as { time: number } & Record<
-          TAggregateBy,
-          Record<string, number>
-        >;
+        const day = { time: Key.fromString(key).bucket } as {
+          time: number;
+        } & Record<TAggregateBy, Record<string, number>>;
 
         for (const [field, count] of Object.entries(hash)) {
           const r = JSON.parse(field) as Record<TAggregateBy, unknown>;
