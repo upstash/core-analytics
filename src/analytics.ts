@@ -43,7 +43,14 @@ export type AnalyticsConfig = {
    * Buckets are evicted when they are read, not when they are written. This is much cheaper since
    * it only requires a single command to ingest data.
    */
-  retention?: Window | number;
+  retention?: Window | number
+  
+  /**
+   * Whether to initialize a cache. Cache is used in the `loadBuckets` method, which in turn is
+   * called in `count`, `aggregateBy` and `query` methods. This means that to only use `ingest`,
+   * there is no need to use cache.
+   */
+  cache?: boolean
 };
 
 class Cache<TValue> {
@@ -86,13 +93,14 @@ export class Analytics {
   private readonly bucketSize: number;
   private readonly retention?: number;
 
-  private readonly cache = new Cache<Record<string, number>>(60000);
+  private readonly cache?: Cache<Record<string, number>>;
 
   constructor(config: AnalyticsConfig) {
     this.redis = config.redis;
     this.prefix = config.prefix ?? "@upstash/analytics";
     this.bucketSize = this.parseWindow(config.window);
     this.retention = config.retention ? this.parseWindow(config.retention) : undefined;
+    this.cache = config.cache ? new Cache(60000) : undefined;
   }
 
   private validateTableName(table: string) {
@@ -206,14 +214,16 @@ export class Analytics {
     const loadKeys: string[] = [];
     const buckets: { key: string; hash: Record<string, number> }[] = [];
     for (const key of keys) {
-      const cached = this.cache.get(key);
-      if (cached) {
-        buckets.push({
-          key,
-          hash: cached,
-        });
-      } else {
-        loadKeys.push(key);
+      if (this.cache) {
+        const cached = this.cache.get(key);
+        if (cached) {
+          buckets.push({
+            key,
+            hash: cached,
+          });
+        } else {
+          loadKeys.push(key);
+        }
       }
     }
 
@@ -225,7 +235,7 @@ export class Analytics {
     for (let i = 0; i < loadKeys.length; i++) {
       const key = loadKeys[i];
       const hash = res[i];
-      if (hash) {
+      if (hash && this.cache) {
         this.cache.set(key, hash);
       }
       buckets.push({
