@@ -221,9 +221,9 @@ export class Analytics {
             key,
             hash: cached,
           });
-        } else {
-          loadKeys.push(key);
         }
+      } else {
+        loadKeys.push(key);
       }
     }
 
