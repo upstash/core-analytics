@@ -1,23 +1,30 @@
 export const aggregateHourScript = `
 local key = KEYS[1]
+local field = ARGV[1]
 
 local data = redis.call("ZRANGE", key, 0, -1, "WITHSCORES")
-local success_true_count = 0
-local success_false_count = 0
+local count = {}
 
 for i = 1, #data, 2 do
   local json_str = data[i]
   local score = tonumber(data[i + 1])
   local obj = cjson.decode(json_str)
 
-  if obj.success == true then
-    success_true_count = success_true_count + score
-  elseif obj.success == false then
-    success_false_count = success_false_count + score
+  local fieldValue = obj[field]
+
+  if count[fieldValue] == nil then
+    count[fieldValue] = score
+  else
+    count[fieldValue] = count[fieldValue] + score
   end
 end
 
-return {success_true_count, success_false_count}
+local result = {}
+for k, v in pairs(count) do
+  table.insert(result, {k, v})
+end
+
+return result
 `
 
 export const getMostAllowedBlockedScript = `

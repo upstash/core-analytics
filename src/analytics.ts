@@ -1,9 +1,9 @@
 import { Redis } from "@upstash/redis";
 import {
   Event,
-  Key,
   Window,
-  AnalyticsConfig
+  AnalyticsConfig,
+  Aggregate
 } from "./types"
 import {
   aggregateHourScript,
@@ -94,13 +94,28 @@ export class Analytics {
     );
   }
 
+  protected formatBucketAggregate(
+    rawAggregate: [string, number][],
+    groupBy: string,
+    bucket: number
+  ): Aggregate {
+    const returnObject: { [key: string]: { [key: string]: number } } = {};
+    rawAggregate.forEach(([group, count]) => {
+      if (groupBy == "success") {
+        group = group == "1" ? "true" : "false" // replace "null" with "0"
+      }
+      returnObject[groupBy] = returnObject[groupBy] || {};
+      returnObject[groupBy][group] = count;
+    });
+    return {time: bucket, ...returnObject} as Aggregate;
+  }
+
   public async aggregateBucket(
     table: string,
+    groupBy: string,
     timestamp?: number,
-    redis?: Redis
-  ): Promise<{time: number, success: {true: number, false: number}}> {
+  ): Promise<Aggregate> {
     this.validateTableName(table);
-    redis = redis ?? this.redis
 
     const bucket = this.getBucket(timestamp);
     const key = [this.prefix, table, bucket].join(":");
@@ -108,32 +123,26 @@ export class Analytics {
     const result = await this.redis.eval(
       aggregateHourScript,
       [key],
-      []
-    ) as number[];
+      [groupBy]
+    ) as [string, number][];
 
-    return {
-      time: bucket,
-      success: {
-        true: result[0],
-        false: result[1]
-      }
-    };
+    return this.formatBucketAggregate(result, groupBy, bucket)
   }
 
   public async aggregateBuckets(
     table: string,
+    groupBy: string,
     bucketCount: number,
     timestamp?: number
-  ): Promise<{time: number, success: {true: number, false: number}}[]> {
+  ): Promise<Aggregate[]> {
     this.validateTableName(table);
 
     let bucket = this.getBucket(timestamp)
-    const promises: Promise<{time: number, success: {true: number, false: number}}>[] = []
+    const promises = []
   
-    
     for (let i = 0; i < bucketCount; i += 1) {
       promises.push(
-        this.aggregateBucket(table, bucket)
+        this.aggregateBucket(table, groupBy, bucket)
       )
       bucket = bucket - this.bucketSize
     }
@@ -143,10 +152,11 @@ export class Analytics {
 
   public async aggregateBucketsWithPipeline(
     table: string,
+    groupBy: string,
     bucketCount: number,
     timestamp?: number,
     maxPipelineSize?: number
-  ): Promise<{time: number, success: {true: number, false: number}}[]> {
+  ): Promise<Aggregate[]> {
     this.validateTableName(table);
 
     maxPipelineSize = maxPipelineSize ?? 48
@@ -154,32 +164,30 @@ export class Analytics {
     const buckets: number[] = []
     let pipeline = this.redis.pipeline();
     
-    const pipelinePromises: Promise<number[][]>[] = []
+    const pipelinePromises: Promise<[string, number][][]>[] = []
     for (let i = 1; i <= bucketCount; i += 1) {
       const key = [this.prefix, table, bucket].join(":");
       pipeline.eval(
         aggregateHourScript,
         [key],
-        []
+        [groupBy]
       );
       buckets.push(bucket)
       bucket = bucket - this.bucketSize;
 
       if (i % maxPipelineSize == 0 || i == bucketCount) {
-        pipelinePromises.push(pipeline.exec<number[][]>())
+        pipelinePromises.push(pipeline.exec<[string, number][][]>())
         pipeline = this.redis.pipeline()
       }
     }
     const bucketResults = (await Promise.all(pipelinePromises)).flat()
     
     return bucketResults.map((result, index) => {
-      return {
-        time: buckets[index],
-        success: {
-          true: result[0],
-          false: result[1]
-        }
-      }
+      return this.formatBucketAggregate(
+        result,
+        groupBy,
+        buckets[index]
+      )
     })
   }
 

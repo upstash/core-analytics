@@ -45,3 +45,15 @@ export type AnalyticsConfig = {
    */
   retention?: Window | number
 };
+
+interface AggregateTime {
+  time: number;
+}
+
+interface AggregateGeneric {
+  [someFieldName: string]: {
+    [someFieldValue: string]: number;
+  };
+}
+
+export type Aggregate = AggregateTime & AggregateGeneric;
