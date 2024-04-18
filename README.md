@@ -30,7 +30,7 @@ npm install @upstash/analytics @upstash/redis
 4. Create an analytics client
 
 ```ts
-import { Analytyics } from "@upstash/core-analytics";
+import { Analytics } from "@upstash/core-analytics";
 import { Redis } from "@upstash/redis";
 
 const analytics = new Analytics({
