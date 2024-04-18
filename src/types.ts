@@ -44,11 +44,4 @@ export type AnalyticsConfig = {
    * it only requires a single command to ingest data.
    */
   retention?: Window | number
-  
-  /**
-   * Whether to initialize a cache. Cache is used in the `loadBuckets` method, which in turn is
-   * called in `count`, `aggregateBy` and `query` methods. This means that to only use `ingest`,
-   * there is no need to use cache.
-   */
-  cache?: boolean
 };

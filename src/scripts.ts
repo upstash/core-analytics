@@ -1,0 +1,87 @@
+export const aggregateHourScript = `
+local key = KEYS[1]
+
+local data = redis.call("ZRANGE", key, 0, -1, "WITHSCORES")
+local success_true_count = 0
+local success_false_count = 0
+
+for i = 1, #data, 2 do
+  local json_str = data[i]
+  local score = tonumber(data[i + 1])
+  local obj = cjson.decode(json_str)
+
+  if obj.success == true then
+    success_true_count = success_true_count + score
+  elseif obj.success == false then
+    success_false_count = success_false_count + score
+  end
+end
+
+return {success_true_count, success_false_count}
+`
+
+export const getMostAllowedBlockedScript = `
+local prefix = KEYS[1]
+local first_timestamp = tonumber(ARGV[1])
+local increment = tonumber(ARGV[2])
+local num_timestamps = tonumber(ARGV[3])
+local num_elements = tonumber(ARGV[4])
+
+local keys = {}
+for i = 1, num_timestamps do
+  local timestamp = first_timestamp - (i - 1) * increment
+  table.insert(keys, prefix .. ":" .. timestamp)
+end
+
+-- get the union of the groups
+local zunion_params = {"ZUNION", num_timestamps, unpack(keys)}
+table.insert(zunion_params, "WITHSCORES")
+local result = redis.call(unpack(zunion_params))
+
+-- select num_elements many items
+local true_group = {}
+local false_group = {}
+local true_count = 0
+local false_count = 0
+local i = #result - 1
+
+-- iterate over the results
+while (true_count + false_count) < (num_elements * 2) and 1 <= i do
+  local score = tonumber(result[i + 1])
+  if score > 0 then
+    local element = result[i]
+    if string.find(element, "success\\":true") and true_count < num_elements then
+      table.insert(true_group, element)
+      table.insert(true_group, score)
+      true_count = true_count + 1
+    elseif string.find(element, "success\\":false") and false_count < num_elements then
+      table.insert(false_group, element)
+      table.insert(false_group, score)
+      false_count = false_count + 1
+    end
+  end
+  i = i - 2
+end
+
+return {true_group, false_group}
+`
+
+export const getAllowedBlockedScript = `
+local prefix = KEYS[1]
+local first_timestamp = tonumber(ARGV[1])
+local increment = tonumber(ARGV[2])
+local num_timestamps = tonumber(ARGV[3])
+
+local keys = {}
+for i = 1, num_timestamps do
+  local timestamp = first_timestamp - (i - 1) * increment
+  table.insert(keys, prefix .. ":" .. timestamp)
+end
+
+-- get the union of the groups
+local zunion_params = {"ZUNION", num_timestamps, unpack(keys)}
+table.insert(zunion_params, "WITHSCORES")
+local result = redis.call(unpack(zunion_params))
+
+return result
+`
