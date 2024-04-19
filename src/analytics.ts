@@ -242,15 +242,15 @@ export class Analytics {
     const key = [this.prefix, table].join(":");
     const bucket = this.getBucket(timestamp)
 
-    const result = await this.redis.eval(
+    const [allowed, blocked] = await this.redis.eval(
       getMostAllowedBlockedScript,
       [key],
       [bucket, this.bucketSize, timestampCount, itemCount]
-    ) as string[][]
+    ) as [string, {identifier: string, success: boolean}][][]
 
     return {
-      allowed: this.toDicts(result[0]),
-      blocked: this.toDicts(result[1])
+      allowed: this.toDicts(allowed),
+      blocked: this.toDicts(blocked)
     }
   }
 
@@ -258,11 +258,11 @@ export class Analytics {
    * convert ["a", 1, ...] to [{identifier: 1, count: 1}, ...]
    * @param array
    */
-  protected toDicts (array: (string | {identifier: string, success: boolean})[]) {
+  protected toDicts (array: [string, {identifier: string, success: boolean}][]) {
     const dict: {identifier: string, count: number}[] = [];
-    for (let i = 0; i < array.length; i += 2) {
-        const info = array[i] as {identifier: string, success: boolean}
-        const count = +array[i + 1] // cast string to number;
+    for (let i = 0; i < array.length; i += 1) {
+        const count = +array[i][0] // cast string to number;
+        const info = array[i][1]
         dict.push({
           identifier: info.identifier,
           count: count

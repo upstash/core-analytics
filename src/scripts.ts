@@ -58,12 +58,10 @@ while (true_count + false_count) < (num_elements * 2) and 1 <= i do
   if score > 0 then
     local element = result[i]
     if string.find(element, "success\\":true") and true_count < num_elements then
-      table.insert(true_group, element)
-      table.insert(true_group, score)
+      table.insert(true_group, {score, element})
       true_count = true_count + 1
     elseif string.find(element, "success\\":false") and false_count < num_elements then
-      table.insert(false_group, element)
-      table.insert(false_group, score)
+      table.insert(false_group, {score, element})
       false_count = false_count + 1
     end
   end
