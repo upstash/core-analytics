@@ -48,12 +48,14 @@ local result = redis.call(unpack(zunion_params))
 -- select num_elements many items
 local true_group = {}
 local false_group = {}
+local denied_group = {}
 local true_count = 0
 local false_count = 0
+local denied_count = 0
 local i = #result - 1
 
 -- iterate over the results
-while (true_count + false_count) < (num_elements * 2) and 1 <= i do
+while (true_count + false_count + denied_count) < (num_elements * 3) and 1 <= i do
   local score = tonumber(result[i + 1])
   if score > 0 then
     local element = result[i]
@@ -63,12 +65,15 @@ while (true_count + false_count) < (num_elements * 2) and 1 <= i do
     elseif string.find(element, "success\\":false") and false_count < num_elements then
       table.insert(false_group, {score, element})
       false_count = false_count + 1
+    elseif string.find(element, "success\\":\\"denied") and denied_count < num_elements then
+      table.insert(denied_group, {score, element})
+      denied_count = denied_count + 1
     end
   end
   i = i - 2
 end
 
-return {true_group, false_group}
+return {true_group, false_group, denied_group}
 `
 
 export const getAllowedBlockedScript = `
