@@ -3,7 +3,8 @@ import {
   Event,
   Window,
   AnalyticsConfig,
-  Aggregate
+  Aggregate,
+  SuccessResponse
 } from "./types"
 import {
   aggregateHourScript,
@@ -93,7 +94,7 @@ export class Analytics {
   }
 
   protected formatBucketAggregate(
-    rawAggregate: [string | 1 | null, number][],
+    rawAggregate: [SuccessResponse, number][],
     groupBy: string,
     bucket: number
   ): Aggregate {
@@ -126,7 +127,7 @@ export class Analytics {
       aggregateHourScript,
       [key],
       [groupBy]
-    ) as [string, number][];
+    ) as [SuccessResponse, number][];
 
     return this.formatBucketAggregate(result, groupBy, bucket)
   }
@@ -166,7 +167,7 @@ export class Analytics {
     const buckets: number[] = []
     let pipeline = this.redis.pipeline();
     
-    const pipelinePromises: Promise<[string, number][][]>[] = []
+    const pipelinePromises: Promise<[SuccessResponse, number][][]>[] = []
     for (let i = 1; i <= bucketCount; i += 1) {
       const key = [this.prefix, table, bucket].join(":");
       pipeline.eval(
