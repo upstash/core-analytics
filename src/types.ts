@@ -57,3 +57,8 @@ interface AggregateGeneric {
 }
 
 export type Aggregate = AggregateTime & AggregateGeneric;
+
+// value of the success field coming from lua
+// 1 represents true, null represents false
+export type RawSuccessResponse = 1 | null
+export type SuccessResponse = RawSuccessResponse | string

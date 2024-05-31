@@ -3,7 +3,8 @@ import {
   Event,
   Window,
   AnalyticsConfig,
-  Aggregate
+  Aggregate,
+  SuccessResponse
 } from "./types"
 import {
   aggregateHourScript,
@@ -15,13 +16,11 @@ export class Analytics {
   private readonly redis: Redis;
   private readonly prefix: string;
   private readonly bucketSize: number;
-  private readonly retention?: number;
 
   constructor(config: AnalyticsConfig) {
     this.redis = config.redis;
     this.prefix = config.prefix ?? "@upstash/analytics";
     this.bucketSize = this.parseWindow(config.window);
-    this.retention = config.retention ? this.parseWindow(config.retention) : undefined;
   }
 
   private validateTableName(table: string) {
@@ -95,17 +94,21 @@ export class Analytics {
   }
 
   protected formatBucketAggregate(
-    rawAggregate: [string, number][],
+    rawAggregate: [SuccessResponse, number][],
     groupBy: string,
     bucket: number
   ): Aggregate {
     const returnObject: { [key: string]: { [key: string]: number } } = {};
     rawAggregate.forEach(([group, count]) => {
       if (groupBy == "success") {
-        group = group == "1" ? "true" : "false" // replace "null" with "0"
-      }
+        group = group === 1
+          ? "true"
+          : group === null
+            ? "false"
+            : group; // group can be "denyList"
+      };
       returnObject[groupBy] = returnObject[groupBy] || {};
-      returnObject[groupBy][group] = count;
+      returnObject[groupBy][(group ?? "null").toString()] = count;
     });
     return {time: bucket, ...returnObject} as Aggregate;
   }
@@ -124,7 +127,7 @@ export class Analytics {
       aggregateHourScript,
       [key],
       [groupBy]
-    ) as [string, number][];
+    ) as [SuccessResponse, number][];
 
     return this.formatBucketAggregate(result, groupBy, bucket)
   }
@@ -164,7 +167,7 @@ export class Analytics {
     const buckets: number[] = []
     let pipeline = this.redis.pipeline();
     
-    const pipelinePromises: Promise<[string, number][][]>[] = []
+    const pipelinePromises: Promise<[SuccessResponse, number][][]>[] = []
     for (let i = 1; i <= bucketCount; i += 1) {
       const key = [this.prefix, table, bucket].join(":");
       pipeline.eval(
@@ -234,7 +237,8 @@ export class Analytics {
   ): Promise<
     {
       allowed: {identifier: string, count: number}[],
-      blocked: {identifier: string, count: number}[]
+      ratelimited: {identifier: string, count: number}[]
+      denied: {identifier: string, count: number}[]
     }
   > {
     this.validateTableName(table);
@@ -242,7 +246,7 @@ export class Analytics {
     const key = [this.prefix, table].join(":");
     const bucket = this.getBucket(timestamp)
 
-    const [allowed, blocked] = await this.redis.eval(
+    const [allowed, ratelimited, denied] = await this.redis.eval(
       getMostAllowedBlockedScript,
       [key],
       [bucket, this.bucketSize, timestampCount, itemCount]
@@ -250,7 +254,8 @@ export class Analytics {
 
     return {
       allowed: this.toDicts(allowed),
-      blocked: this.toDicts(blocked)
+      ratelimited: this.toDicts(ratelimited),
+      denied: this.toDicts(denied)
     }
   }
 
