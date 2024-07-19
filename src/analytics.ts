@@ -229,11 +229,27 @@ export class Analytics {
     return allowedBlocked
   }
 
+  /**
+   * Fetches the most allowed & blocked and denied items.
+   * 
+   * @param table Ratelimit prefix to search for analytics
+   * @param timestampCount Number of timestamps (24 for a day and 24 * 7 for a week)
+   * @param itemCount Number of items to fetch from each category. If set to 30,
+   *                  30 items will be fetched from each category. 90 items will be
+   *                  returned in total if there are enough items in each category.
+   * @param timestamp Most recent bucket timestamp to read from
+   * @param checkAtMost Early finish parameter. Imagine that itemCount is set to 30.
+   *                    If checkAtMost is set to 100, script will stop after checking
+   *                    100 items even if there aren't 90 items yet.
+   *                    Set to `itemCount * 5` by default.
+   * @returns most allowed & blocked and denied items
+   */
   public async getMostAllowedBlocked(
     table: string,
     timestampCount: number,
     itemCount: number,
     timestamp?: number,
+    checkAtMost?: number
   ): Promise<
     {
       allowed: {identifier: string, count: number}[],
@@ -246,10 +262,12 @@ export class Analytics {
     const key = [this.prefix, table].join(":");
     const bucket = this.getBucket(timestamp)
 
+    const checkAtMostValue = checkAtMost ?? itemCount * 5
+    
     const [allowed, ratelimited, denied] = await this.redis.eval(
       getMostAllowedBlockedScript,
       [key],
-      [bucket, this.bucketSize, timestampCount, itemCount]
+      [bucket, this.bucketSize, timestampCount, itemCount, checkAtMostValue]
     ) as [string, {identifier: string, success: boolean}][][]
 
     return {

@@ -29,10 +29,11 @@ return result
 
 export const getMostAllowedBlockedScript = `
 local prefix = KEYS[1]
-local first_timestamp = tonumber(ARGV[1])
-local increment = tonumber(ARGV[2])
-local num_timestamps = tonumber(ARGV[3])
-local num_elements = tonumber(ARGV[4])
+local first_timestamp = tonumber(ARGV[1]) -- First timestamp to check
+local increment = tonumber(ARGV[2])       -- Increment between each timestamp
+local num_timestamps = tonumber(ARGV[3])  -- Number of timestampts to check (24 for a day and 24 * 7 for a week)
+local num_elements = tonumber(ARGV[4])    -- Number of elements to fetch in each category
+local check_at_most = tonumber(ARGV[5])   -- Number of elements to check at most.
 
 local keys = {}
 for i = 1, num_timestamps do
@@ -54,8 +55,11 @@ local false_count = 0
 local denied_count = 0
 local i = #result - 1
 
+-- index to stop at after going through "checkAtMost" many items:
+local cutoff_index = #result - 2 * check_at_most
+
 -- iterate over the results
-while (true_count + false_count + denied_count) < (num_elements * 3) and 1 <= i do
+while (true_count + false_count + denied_count) < (num_elements * 3) and 1 <= i and i >= cutoff_index do
   local score = tonumber(result[i + 1])
   if score > 0 then
     local element = result[i]
